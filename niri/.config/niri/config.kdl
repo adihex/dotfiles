@@ -38,6 +38,7 @@ screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
 // sessions
 spawn-at-startup "mako"
 spawn-at-startup "gammastep"
+spawn-sh-at-startup "wl-paste --watch cliphist store"
 spawn-sh-at-startup "env QML_XHR_ALLOW_FILE_READ=1 qs -c ~/.config/quickshell"
 
 spawn-at-startup "swaybg" "-m" "fill" "-i" "/home/adihex/dotfiles/wallpapers/03-geometric-landscape.png"
@@ -48,6 +49,7 @@ binds {
     // apps
     Mod+Return { spawn "foot"; }
     Mod+D { spawn "fuzzel"; }
+    Mod+V { spawn-sh "~/dotfiles/scripts/clipboard-picker"; }
 
     // media keys
     XF86AudioRaiseVolume  { spawn-sh "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"; }

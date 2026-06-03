@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Clipboard history picker using cliphist + fuzzel
+# Select an entry from history and copy it back to clipboard
+
+selected=$(cliphist list | fuzzel --dmenu -p "Clipboard  " -w 60 --font "JetBrainsMono Nerd Font:size=13" --border-radius 12 --lines 12)
+
+[ -z "$selected" ] && exit 0
+
+cliphist decode <<<"$selected" | wl-copy
