@@ -136,7 +136,7 @@ binds {
     Mod+R { switch-preset-column-width; }
 
     // system
-    Mod+Shift+C { spawn-sh "niri msg action load-config-file"; }
+    Mod+Shift+C hotkey-overlay-title="Reload Config" { spawn-sh "niri msg action load-config-file"; }
     Mod+Shift+P { power-off-monitors; }
     Mod+Shift+E     hotkey-overlay-title="Power Menu" { spawn-sh "~/dotfiles/scripts/powermenu"; }
     Ctrl+Alt+Delete hotkey-overlay-title="Power Menu" { spawn-sh "~/dotfiles/scripts/powermenu"; }
