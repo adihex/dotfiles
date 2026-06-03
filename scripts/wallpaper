@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# wallpaper swapper — kill current swaybg and start a new one
+# Usage: wallpaper [image-path]
+set -euo pipefail
+
+WALLPAPER_DIR="$HOME/dotfiles/wallpapers"
+DEFAULT="$WALLPAPER_DIR/03-geometric-landscape.png"
+
+img="${1:-}"
+if [ -z "$img" ]; then
+    img=$(find "$WALLPAPER_DIR" -maxdepth 1 -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' \) 2>/dev/null | shuf -n1)
+    [ -z "$img" ] && img="$DEFAULT"
+fi
+
+# kill old
+pkill swaybg 2>/dev/null || true
+sleep 0.3
+
+# start new — simple background, no nohup/disown needed for manual use
+swaybg -m fill "$img" &>/dev/null &
+
+echo "Wallpaper: $(basename "$img")"

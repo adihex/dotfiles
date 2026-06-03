@@ -1,0 +1,51 @@
+* {
+    background-image: none;
+    font-family: "Sans";
+}
+
+window {
+    background-color: rgba(24, 24, 37, 0.95);
+}
+
+button {
+    color: #cdd6f4;
+    background-color: #1e1e2e;
+    border: 2px solid #313244;
+    border-radius: 20px;
+    margin: 20px;
+    font-size: 16px;
+    font-weight: bold;
+    min-height: 140px;
+    min-width: 140px;
+    background-repeat: no-repeat;
+    background-position: center 30px;
+    background-size: 64px;
+    padding-top: 80px;
+}
+
+button:focus, button:hover {
+    background-color: #313244;
+    border-color: #89b4fa;
+    color: #89b4fa;
+}
+
+#lock {
+    background-image: url("/usr/share/icons/Papirus/64x64/apps/system-lock-screen.svg");
+    color: #b4befe;
+}
+#logout {
+    background-image: url("/usr/share/icons/Papirus/64x64/apps/system-log-out.svg");
+    color: #f9e2af;
+}
+#suspend {
+    background-image: url("/usr/share/icons/Papirus/64x64/apps/system-suspend.svg");
+    color: #a6e3a1;
+}
+#reboot {
+    background-image: url("/usr/share/icons/Papirus/64x64/apps/system-reboot.svg");
+    color: #f38ba8;
+}
+#shutdown {
+    background-image: url("/usr/share/icons/Papirus/64x64/apps/gnome-shutdown.svg");
+    color: #eba0ac;
+}

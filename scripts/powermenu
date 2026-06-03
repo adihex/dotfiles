@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Fuzzel-based power menu for Niri
+# Pipe options to fuzzel, execute the chosen action
+
+options="  Lock\n  Logout\n  Suspend\n  Reboot\n  Shutdown"
+
+choice=$(echo -e "$options" | fuzzel --dmenu -p "Power  " -w 40 --font "JetBrainsMono Nerd Font:size=14" --border-radius 12)
+
+case "$choice" in
+    *Lock*)    swaylock -f -c 1e1e2e ;;
+    *Logout*)  niri msg action quit ;;
+    *Suspend*) systemctl suspend ;;
+    *Reboot*)  systemctl reboot ;;
+    *Shutdown*) systemctl poweroff ;;
+esac
