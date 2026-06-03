@@ -48,6 +48,7 @@
 | `Mod+F` | Maximize column (toggle) |
 | `Mod+Shift+F` | Fullscreen window |
 | `Mod+Shift+Space` | Toggle floating window |
+| `Mod+Shift+V` | Switch focus between floating & tiling |
 | `Mod+R` | Cycle preset column widths |
 
 ## System
