@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# Monitor preset switcher — works in both Niri and GNOME
+# Usage: monitor-preset [coding|gaming|movies|reset|night|menu]
+
+set -euo pipefail
+
+PRESET="${1:-coding}"
+
+# Detect compositor
+if [ -n "${NIRI_SOCKET:-}" ]; then
+  DE="niri"
+elif [ "${XDG_CURRENT_DESKTOP:-}" = "GNOME" ]; then
+  DE="gnome"
+else
+  DE="other"
+fi
+
+# Show feedback: notification + optional popup
+announce() {
+  local icon="$1" title="$2" detail="$3"
+  notify-send -t 3000 "$icon $title" "$detail" 2>/dev/null || true
+  if [ "$DE" = "gnome" ]; then
+    zenity --info --title="$icon $title" \
+      --text="$detail" --width=300 --timeout=2 2>/dev/null || true
+  fi
+}
+
+apply_mode() {
+  local mode="$1"
+  local vrr="$2"
+
+  if [ "$DE" = "niri" ]; then
+    niri msg action do-screen-transition 2>/dev/null || true
+    niri msg output "HDMI-A-1" mode "$mode" 2>/dev/null || true
+    niri msg output "HDMI-A-1" vrr "$vrr" 2>/dev/null || true
+  fi
+  # GNOME: resolution changes are not scriptable via CLI, skip
+}
+
+case "$PRESET" in
+  coding)
+    apply_mode "2560x1440@119.998" "off"
+    gammastep -O 4500 -b 0.9 2>/dev/null &
+    announce "💻" "Coding mode" "4500K warm · Eye comfort"
+    ;;
+
+  gaming)
+    if [ "$DE" = "niri" ]; then
+      apply_mode "2560x1440@143.933" "on"
+      desc="144Hz · VRR On · 6500K neutral"
+    else
+      desc="6500K neutral"
+    fi
+    gammastep -x 2>/dev/null
+    gammastep -O 6500 -b 1.0 2>/dev/null &
+    announce "🎮" "Gaming mode" "$desc"
+    ;;
+
+  movies)
+    if [ "$DE" = "niri" ]; then
+      apply_mode "3840x2160@60.000" "off"
+      desc="4K@60Hz · 5000K cinematic"
+    else
+      desc="5000K cinematic"
+    fi
+    gammastep -O 5000 -b 0.8 2>/dev/null &
+    announce "🎬" "Movie mode" "$desc"
+    ;;
+
+  reset)
+    if [ "$DE" = "niri" ]; then
+      apply_mode "2560x1440@119.998" "off"
+    fi
+    pkill gammastep 2>/dev/null || true
+    nohup gammastep -c /home/adihex/.config/gammastep/config.ini >/dev/null 2>&1 &
+    announce "↻" "Reset" "Auto day/night temperature"
+    ;;
+
+  night)
+    gammastep -O 3500 -b 0.7 2>/dev/null &
+    announce "🌙" "Night mode" "3500K · Dimmed"
+    ;;
+
+  menu)
+    if [ "$DE" = "gnome" ]; then
+      CHOICE=$(zenity --list --title="Monitor Preset" \
+        --column="Mode" --width=300 --height=320 \
+        "💻  Coding" "🎮  Gaming" "🎬  Movies" "↻  Reset" "🌙  Night" 2>/dev/null)
+    else
+      CHOICE=$(printf "💻  Coding\n🎮  Gaming\n🎬  Movies\n↻  Reset\n🌙  Night" | \
+        wofi --dmenu --prompt "Monitor Preset" --width 300 --height 250 -i 2>/dev/null)
+    fi
+    case "$CHOICE" in
+      *Coding) exec "$0" coding ;;
+      *Gaming) exec "$0" gaming ;;
+      *Movies) exec "$0" movies ;;
+      *Reset)  exec "$0" reset ;;
+      *Night)  exec "$0" night ;;
+      *) exit 0 ;;
+    esac
+    ;;
+
+  *)
+    echo "Usage: $0 {coding|gaming|movies|reset|night|menu}"
+    exit 1
+    ;;
+esac
