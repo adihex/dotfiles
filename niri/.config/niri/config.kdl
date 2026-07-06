@@ -35,12 +35,27 @@ layout {
 prefer-no-csd
 screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
 
-// sessions
-spawn-at-startup "mako"
-spawn-at-startup "gammastep"
-spawn-sh-at-startup "wl-paste --watch cliphist store"
-spawn-sh-at-startup "env QML_XHR_ALLOW_FILE_READ=1 qs -c ~/.config/quickshell"
+// LG ULTRAGEAR monitor (connected via HDMI to Navi 10 GPU)
+// Matched by connector name for reliability
+output "HDMI-A-1" {
+    // 1440p@120Hz (preferred). Use 144Hz mode for gaming via preset.
+    mode "2560x1440@119.998"
+    scale 1
+    // VRR enabled on-demand for gaming preset
+    // variable-refresh-rate on-demand=true
+}
 
+// Built-in laptop display — keep off when external monitor is connected.
+// If the HDMI monitor isn't detected, eDP-1 will automatically be used instead.
+output "eDP-1" {
+    off
+}
+
+// sessions
+spawn-at-startup "/usr/libexec/lxqt-policykit-agent"
+spawn-at-startup "mako"
+spawn-at-startup "gammastep" "-c" "/home/adihex/.config/gammastep/config.ini"
+spawn-sh-at-startup "wl-paste --watch cliphist store"
 spawn-at-startup "swaybg" "-m" "fill" "-i" "/home/adihex/dotfiles/wallpapers/03-geometric-landscape.png"
 
 binds {
@@ -48,6 +63,7 @@ binds {
 
     // apps
     Mod+Return hotkey-overlay-title="Terminal (foot)" { spawn "foot"; }
+    Mod+Shift+Return hotkey-overlay-title="Browser (Zen)" { spawn-sh "xdg-open about:blank"; }
     Mod+D      hotkey-overlay-title="App Launcher (fuzzel)" { spawn "fuzzel"; }
     Mod+V      hotkey-overlay-title="Clipboard History" { spawn-sh "~/dotfiles/scripts/clipboard-picker"; }
 
@@ -126,6 +142,32 @@ binds {
     Mod+Ctrl+Page_Down { move-column-to-workspace-down; }
     Mod+Ctrl+Page_Up   { move-column-to-workspace-up; }
 
+    // Move column to workspace with Mod+Shift (more ergonomic)
+    Mod+Shift+1 { move-column-to-workspace 1; }
+    Mod+Shift+2 { move-column-to-workspace 2; }
+    Mod+Shift+3 { move-column-to-workspace 3; }
+    Mod+Shift+4 { move-column-to-workspace 4; }
+    Mod+Shift+5 { move-column-to-workspace 5; }
+    Mod+Shift+6 { move-column-to-workspace 6; }
+    Mod+Shift+7 { move-column-to-workspace 7; }
+    Mod+Shift+8 { move-column-to-workspace 8; }
+    Mod+Shift+9 { move-column-to-workspace 9; }
+    Mod+Shift+Page_Down { move-column-to-workspace-down; }
+    Mod+Shift+Page_Up   { move-column-to-workspace-up; }
+
+    // Move only the focused window (not whole column) to workspace
+    Mod+Alt+1 { move-window-to-workspace 1; }
+    Mod+Alt+2 { move-window-to-workspace 2; }
+    Mod+Alt+3 { move-window-to-workspace 3; }
+    Mod+Alt+4 { move-window-to-workspace 4; }
+    Mod+Alt+5 { move-window-to-workspace 5; }
+    Mod+Alt+6 { move-window-to-workspace 6; }
+    Mod+Alt+7 { move-window-to-workspace 7; }
+    Mod+Alt+8 { move-window-to-workspace 8; }
+    Mod+Alt+9 { move-window-to-workspace 9; }
+    Mod+Alt+Page_Down { move-window-to-workspace-down; }
+    Mod+Alt+Page_Up   { move-window-to-workspace-up; }
+
     Mod+BracketLeft  { consume-or-expel-window-left; }
     Mod+BracketRight { consume-or-expel-window-right; }
 
@@ -143,7 +185,11 @@ binds {
     Ctrl+Alt+Delete hotkey-overlay-title="Power Menu" { spawn-sh "~/dotfiles/scripts/powermenu"; }
     Mod+Shift+Ctrl+E { quit; }
 
+    // monitor preset menu (wofi)
+    Mod+P hotkey-overlay-title="Preset Switcher" { spawn-sh "/home/adihex/.local/bin/monitor-preset menu"; }
+
     // lockscreen
     Mod+Shift+L hotkey-overlay-title="Lock Screen" { spawn-sh "swaylock -f -c 1e1e2e"; }
     Mod+Shift+T hotkey-overlay-title="Toggle Night Mode" { spawn-sh "pkill -USR1 gammastep"; }
+    Mod+Shift+G hotkey-overlay-title="Toggle GPU Fan 100%" { spawn-sh "/home/adihex/dotfiles/scripts/toggle-gpu-fan"; }
 }

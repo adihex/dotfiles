@@ -1,0 +1,25 @@
+#!/bin/bash
+# Toggle GPU fan between auto and 100%
+# For RX 5600M (dGPU, card1)
+
+PWM="/sys/class/drm/card1/device/hwmon/hwmon5/pwm1"
+PWM_ENABLE="/sys/class/drm/card1/device/hwmon/hwmon5/pwm1_enable"
+TEMP="/sys/class/drm/card1/device/hwmon/hwmon5/temp1_input"
+
+# Wake GPU if suspended (run a quick command on dGPU)
+DRI_PRIME=1 true 2>/dev/null
+
+current_mode=$(cat "$PWM_ENABLE" 2>/dev/null)
+current_pwm=$(cat "$PWM" 2>/dev/null)
+
+if [ "$current_mode" = "1" ] && [ "$current_pwm" = "255" ]; then
+    # Currently at 100% manual — switch back to auto
+    pkexec sh -c "echo 2 > $PWM_ENABLE"
+    temp=$(cat "$TEMP" 2>/dev/null | head -c2)
+    notify-send -t 2000 "GPU Fan: AUTO" "Temp: ${temp}°C" 2>/dev/null || true
+else
+    # Set to 100% manual
+    pkexec sh -c "echo 1 > $PWM_ENABLE && echo 255 > $PWM"
+    temp=$(cat "$TEMP" 2>/dev/null | head -c2)
+    notify-send -t 2000 "GPU Fan: 100%" "Temp: ${temp}°C" 2>/dev/null || true
+fi

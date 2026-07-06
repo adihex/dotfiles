@@ -4,6 +4,8 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Services.Pipewire
 import Quickshell.Io
+import Quickshell.Bluetooth
+import Quickshell.Services.UPower
 
 ShellRoot {
     id: root
@@ -145,6 +147,41 @@ ShellRoot {
         Quickshell.execDetached(["nm-connection-editor"])
     }
 
+    // ── bluetooth ──
+    property int btConnectedCount: 0
+    property string btConnectedName: ""
+
+    function updateBluetooth() {
+        let a = Bluetooth.defaultAdapter
+        if (!a || !a.enabled) {
+            btConnectedCount = 0
+            btConnectedName = ""
+            return
+        }
+        let devs = a.devices
+        let count = 0
+        let firstName = ""
+        if (devs) {
+            for (let i = 0; i < 50; i++) {
+                let d = devs[i]
+                if (!d) break
+                if (d.connected) {
+                    if (count === 0) firstName = d.name || d.deviceName || d.address
+                    count++
+                }
+            }
+        }
+        btConnectedCount = count
+        btConnectedName = firstName
+    }
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: true
+        onTriggered: updateBluetooth()
+    }
+
     // ── bar ──
     Variants {
         model: Quickshell.screens
@@ -235,6 +272,65 @@ ShellRoot {
                         MouseArea {
                             anchors.fill: parent
                             onClicked: openNetwork()
+                        }
+                    }
+
+                    Rectangle {
+                        implicitWidth: 1; implicitHeight: root.barH * 0.5
+                        color: root.overlay1
+                    }
+
+                    // ── bluetooth ──
+                    Item {
+                        implicitWidth: btRow.width
+                        implicitHeight: root.barH
+                        Row {
+                            id: btRow
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4
+                            Text {
+                                text: {
+                                    let a = Bluetooth.defaultAdapter
+                                    if (!a || !a.enabled) return String.fromCodePoint(0xF0A0B)
+                                    if (root.btConnectedCount > 0) return String.fromCodePoint(0xF0A0E)
+                                    return String.fromCodePoint(0xF0A0D)
+                                }
+                                color: {
+                                    let a = Bluetooth.defaultAdapter
+                                    if (!a || !a.enabled) return root.subtext
+                                    return root.accent
+                                }
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 16 }
+                            }
+                            Text {
+                                text: {
+                                    let a = Bluetooth.defaultAdapter
+                                    if (!a || !a.enabled) return "Off"
+                                    if (root.btConnectedCount === 1 && root.btConnectedName)
+                                        return root.btConnectedName
+                                    if (root.btConnectedCount > 1)
+                                        return root.btConnectedCount + ""
+                                    return "On"
+                                }
+                                color: {
+                                    let a = Bluetooth.defaultAdapter
+                                    if (!a || !a.enabled) return root.subtext
+                                    return root.accent
+                                }
+                                font.pixelSize: 13
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onClicked: (mouse) => {
+                                if (mouse.button === Qt.LeftButton) {
+                                    let a = Bluetooth.defaultAdapter
+                                    if (a) a.enabled = !a.enabled
+                                } else if (mouse.button === Qt.RightButton) {
+                                    Quickshell.execDetached(["blueman-manager"])
+                                }
+                            }
                         }
                     }
 
@@ -343,6 +439,82 @@ ShellRoot {
                         text: bar.clockNow
                         color: root.lavender
                         font { family: "JetBrainsMono Nerd Font"; bold: true; pixelSize: 16 }
+                    }
+
+                    Rectangle {
+                        implicitWidth: 1; implicitHeight: root.barH * 0.5
+                        color: root.overlay1
+                    }
+
+                    // ── battery (UPower reports 0.0–1.0, multiply by 100) ──
+                    Item {
+                        id: batteryItem
+                        implicitWidth: batRow.width
+                        implicitHeight: root.barH
+                        visible: UPower.displayDevice && UPower.displayDevice.isPresent
+
+                        function pct() {
+                            let d = UPower.displayDevice
+                            return d && d.ready ? d.percentage * 100 : 0
+                        }
+
+                        Row {
+                            id: batRow
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4
+                            Text {
+                                id: batIcon
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 16 }
+                                color: {
+                                    let d = UPower.displayDevice
+                                    if (!d || !d.ready) return root.subtext
+                                    if (d.state === UPowerDeviceState.FullyCharged) return root.green
+                                    if (d.state === UPowerDeviceState.Charging) return root.green
+                                    let p = batteryItem.pct()
+                                    if (p <= 10) return root.red
+                                    if (p <= 20) return root.yellow
+                                    return root.text
+                                }
+                                text: {
+                                    let d = UPower.displayDevice
+                                    if (!d || !d.ready) return String.fromCodePoint(0xF0083)
+                                    if (d.state === UPowerDeviceState.FullyCharged) return String.fromCodePoint(0xF008F)
+                                    if (d.state === UPowerDeviceState.Charging) return String.fromCodePoint(0xF008F)
+                                    let p = batteryItem.pct()
+                                    if (p < 10) return String.fromCodePoint(0xF0079)
+                                    if (p < 20) return String.fromCodePoint(0xF007B)
+                                    if (p < 30) return String.fromCodePoint(0xF007C)
+                                    if (p < 40) return String.fromCodePoint(0xF007D)
+                                    if (p < 50) return String.fromCodePoint(0xF007E)
+                                    if (p < 60) return String.fromCodePoint(0xF007F)
+                                    if (p < 70) return String.fromCodePoint(0xF0080)
+                                    if (p < 80) return String.fromCodePoint(0xF0081)
+                                    if (p < 90) return String.fromCodePoint(0xF0082)
+                                    return String.fromCodePoint(0xF0083)
+                                }
+                            }
+                            Text {
+                                id: batPct
+                                font.pixelSize: 14
+                                color: batIcon.color
+                                text: {
+                                    let d = UPower.displayDevice
+                                    if (!d || !d.ready) return "—%"
+                                    return Math.round(batteryItem.pct()) + "%"
+                                }
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                Quickshell.execDetached(["foot", "-e", "bash", "-c", "upower -i /org/freedesktop/UPower/devices/battery_BAT0; read -p 'Press enter to close...'"])
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        implicitWidth: 1; implicitHeight: root.barH * 0.5
+                        color: root.overlay1
                     }
 
                     // ── power (rightmost) ──
