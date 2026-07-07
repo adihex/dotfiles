@@ -1,0 +1,383 @@
+#!/usr/bin/env python3
+import sys
+import os
+import re
+import subprocess
+import tkinter as tk
+from tkinter import ttk
+
+# Catppuccin Mocha Color Palette
+BG_COLOR = "#1e1e2e"          # Dark base
+CARD_BG = "#181825"           # Darker crust/mantle for list items
+SELECTED_BG = "#313244"       # Surface1 for selection
+BORDER_COLOR = "#45475a"      # Surface2 for borders
+FG_COLOR = "#cdd6f4"          # Text/Subtext
+ACCENT_COLOR = "#89b4fa"      # Blue accent for category headers
+SHORTCUT_FG = "#a6e3a1"       # Green for keys
+ACTION_FG = "#f5c2e7"         # Pink for actions
+DESC_FG = "#bac2de"           # Subtext for description
+SEARCH_BG = "#313244"         # Surface1 for search input
+
+CHEATSHEET_PATH = "/home/adihex/niri_cheatsheet.md"
+
+class ScrollableFrame(tk.Frame):
+    def __init__(self, container, *args, **kwargs):
+        super().__init__(container, *args, **kwargs)
+        self.canvas = tk.Canvas(self, bg=BG_COLOR, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = tk.Frame(self.canvas, bg=BG_COLOR)
+
+        self.scrollable_frame_id = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        
+        self.scrollable_frame.bind("<Configure>", self._on_frame_configure)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+        
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+        
+        # Mousewheel binding
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-4>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-5>", self._on_mousewheel)
+
+    def _on_frame_configure(self, event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event):
+        # Update width of scrollable frame to match canvas
+        self.canvas.itemconfig(self.scrollable_frame_id, width=event.width)
+
+    def _on_mousewheel(self, event):
+        if event.num == 4 or event.delta > 0:
+            self.canvas.yview_scroll(-1, "units")
+        elif event.num == 5 or event.delta < 0:
+            self.canvas.yview_scroll(1, "units")
+
+
+class NiriCheatsheetApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Niri Keybindings Cheatsheet")
+        self.root.geometry("800x650")
+        self.root.configure(bg=BG_COLOR)
+        
+        # Hide standard decorations and make it look clean
+        self.root.tk.call('wm', 'attributes', '.', '-type', 'dialog')
+        
+        self.categories = self.parse_cheatsheet(CHEATSHEET_PATH)
+        self.all_items = []
+        for cat, items in self.categories:
+            for item in items:
+                # Keep category info inside each item for searching
+                self.all_items.append({**item, "category": cat})
+
+        self.row_widgets = []
+        self.selected_index = 0
+
+        self.create_widgets()
+        self.root.bind("<Escape>", lambda e: self.root.destroy())
+        self.root.bind("<Up>", self.navigate_up)
+        self.root.bind("<Down>", self.navigate_down)
+        self.root.bind("<Return>", self.action_selected)
+        
+        self.populate_list()
+        
+    def parse_cheatsheet(self, filepath):
+        categories = []
+        current_category = "General"
+        current_items = []
+        
+        if not os.path.exists(filepath):
+            return [("Niri Workflows", [
+                {"key": "Mod+O", "action": "Toggle Overview", "desc": "Show birds-eye view of workspaces"},
+                {"key": "Mod+W", "action": "Toggle Tabbed Column", "desc": "Convert current column into tabs"}
+            ])]
+            
+        with open(filepath, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            
+        for line in lines:
+            line = line.strip()
+            if line.startswith("## "):
+                if current_items:
+                    categories.append((current_category, current_items))
+                    current_items = []
+                current_category = line[3:].strip()
+                current_category = re.sub(r'^[^\w\s]+\s*', '', current_category)
+                current_category = re.sub(r'^\d+\.\s*', '', current_category)
+            elif line.startswith("|") and not "Keybinding" in line and not "---" in line:
+                parts = [p.strip() for p in line.split("|") if p.strip()]
+                if len(parts) >= 3:
+                    key = parts[0].replace('`', '')
+                    action = parts[1].replace('**', '')
+                    desc = parts[2]
+                    current_items.append({
+                        "key": key,
+                        "action": action,
+                        "desc": desc
+                    })
+                    
+        if current_items:
+            categories.append((current_category, current_items))
+            
+        return categories
+
+    def create_widgets(self):
+        # Header Area
+        header_frame = tk.Frame(self.root, bg=BG_COLOR, pady=10)
+        header_frame.pack(fill="x", padx=20)
+        
+        title_label = tk.Label(
+            header_frame, 
+            text="🌌 Niri Workflow Cheatsheet Viewer", 
+            font=("JetBrains Mono", 16, "bold"), 
+            bg=BG_COLOR, 
+            fg=ACCENT_COLOR
+        )
+        title_label.pack(anchor="w")
+
+        subtitle_label = tk.Label(
+            header_frame, 
+            text="Search keybindings below. [Up/Down] Navigate, [Enter] Copy key, [Esc] Close", 
+            font=("JetBrains Mono", 9), 
+            bg=BG_COLOR, 
+            fg=DESC_FG
+        )
+        subtitle_label.pack(anchor="w", pady=(2, 10))
+
+        # Search Bar
+        search_frame = tk.Frame(header_frame, bg=BORDER_COLOR, bd=1, relief="flat")
+        search_frame.pack(fill="x", pady=5)
+        
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", self.on_search)
+        
+        self.search_entry = tk.Entry(
+            search_frame,
+            textvariable=self.search_var,
+            font=("JetBrains Mono", 12),
+            bg=SEARCH_BG,
+            fg=FG_COLOR,
+            insertbackground=FG_COLOR,
+            relief="flat",
+            bd=8
+        )
+        self.search_entry.pack(fill="x")
+        self.search_entry.focus_set()
+
+        # Main List Area
+        self.scroll_frame = ScrollableFrame(self.root)
+        self.scroll_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+    def on_search(self, *args):
+        self.populate_list(self.search_var.get())
+
+    def populate_list(self, query=""):
+        # Clear previous rows
+        for widget in self.scroll_frame.scrollable_frame.winfo_children():
+            widget.destroy()
+        self.row_widgets = []
+        self.selected_index = 0
+        
+        query = query.lower()
+        
+        if not query:
+            # Grouped by Category
+            for cat, items in self.categories:
+                # Category Header
+                cat_label = tk.Label(
+                    self.scroll_frame.scrollable_frame,
+                    text=f"❯ {cat}",
+                    font=("JetBrains Mono", 11, "bold"),
+                    bg=BG_COLOR,
+                    fg=ACCENT_COLOR,
+                    pady=10,
+                    anchor="w"
+                )
+                cat_label.pack(fill="x")
+                
+                for item in items:
+                    self.create_item_row(item)
+        else:
+            # Filtered Flat List
+            matched_items = []
+            for item in self.all_items:
+                if (query in item["key"].lower() or 
+                    query in item["action"].lower() or 
+                    query in item["desc"].lower() or
+                    query in item["category"].lower()):
+                    matched_items.append(item)
+                    
+            if matched_items:
+                for item in matched_items:
+                    self.create_item_row(item)
+            else:
+                no_res = tk.Label(
+                    self.scroll_frame.scrollable_frame,
+                    text="No matching keybindings found.",
+                    font=("JetBrains Mono", 11, "italic"),
+                    bg=BG_COLOR,
+                    fg=DESC_FG,
+                    pady=30
+                )
+                no_res.pack(fill="x")
+                
+        self.update_selection_highlight()
+
+    def create_item_row(self, item):
+        row_frame = tk.Frame(
+            self.scroll_frame.scrollable_frame,
+            bg=CARD_BG,
+            bd=1,
+            highlightbackground=BORDER_COLOR,
+            highlightcolor=ACCENT_COLOR,
+            highlightthickness=1
+        )
+        row_frame.pack(fill="x", pady=4, ipady=6, padx=2)
+        
+        # Left Side: Keybinding Shortcut
+        key_label = tk.Label(
+            row_frame,
+            text=f" {item['key']} ",
+            font=("JetBrains Mono", 11, "bold"),
+            bg=BORDER_COLOR,
+            fg=SHORTCUT_FG,
+            relief="flat",
+            padx=8
+        )
+        key_label.pack(side="left", padx=10)
+        
+        # Right Side Content Container
+        content_frame = tk.Frame(row_frame, bg=CARD_BG)
+        content_frame.pack(side="left", fill="both", expand=True, padx=10)
+        
+        # Action Title
+        action_label = tk.Label(
+            content_frame,
+            text=item["action"],
+            font=("JetBrains Mono", 10, "bold"),
+            bg=CARD_BG,
+            fg=ACTION_FG,
+            anchor="w"
+        )
+        action_label.pack(fill="x")
+        
+        # Description
+        desc_label = tk.Label(
+            content_frame,
+            text=item["desc"],
+            font=("JetBrains Mono", 9),
+            bg=CARD_BG,
+            fg=DESC_FG,
+            anchor="w",
+            justify="left",
+            wraplength=550
+        )
+        desc_label.pack(fill="x")
+
+        # Save references for navigation / highlight
+        self.row_widgets.append({
+            "frame": row_frame,
+            "key_label": key_label,
+            "content_frame": content_frame,
+            "action_label": action_label,
+            "desc_label": desc_label,
+            "data": item
+        })
+
+    def update_selection_highlight(self):
+        if not self.row_widgets:
+            return
+            
+        for idx, row in enumerate(self.row_widgets):
+            if idx == self.selected_index:
+                row["frame"].configure(bg=SELECTED_BG, highlightbackground=ACCENT_COLOR)
+                row["content_frame"].configure(bg=SELECTED_BG)
+                row["action_label"].configure(bg=SELECTED_BG)
+                row["desc_label"].configure(bg=SELECTED_BG)
+            else:
+                row["frame"].configure(bg=CARD_BG, highlightbackground=BORDER_COLOR)
+                row["content_frame"].configure(bg=CARD_BG)
+                row["action_label"].configure(bg=CARD_BG)
+                row["desc_label"].configure(bg=CARD_BG)
+                
+        # Scroll to selected row if needed
+        self.scroll_to_selected()
+
+    def scroll_to_selected(self):
+        if not self.row_widgets:
+            return
+            
+        selected_widget = self.row_widgets[self.selected_index]["frame"]
+        
+        # Force update geometry
+        self.root.update_idletasks()
+        
+        frame_y = selected_widget.winfo_y()
+        frame_height = selected_widget.winfo_height()
+        canvas_height = self.scroll_frame.canvas.winfo_height()
+        scroll_height = self.scroll_frame.scrollable_frame.winfo_height()
+        
+        if scroll_height > canvas_height:
+            # Position fraction
+            top_frac = frame_y / scroll_height
+            bottom_frac = (frame_y + frame_height) / scroll_height
+            
+            # Check if out of view
+            view_top, view_bottom = self.scroll_frame.canvas.yview()
+            if top_frac < view_top or bottom_frac > view_bottom:
+                # Scroll canvas to show the row
+                self.scroll_frame.canvas.yview_moveto(max(0.0, top_frac - 0.1))
+
+    def navigate_up(self, event):
+        if self.selected_index > 0:
+            self.selected_index -= 1
+            self.update_selection_highlight()
+        return "break"
+
+    def navigate_down(self, event):
+        if self.selected_index < len(self.row_widgets) - 1:
+            self.selected_index += 1
+            self.update_selection_highlight()
+        return "break"
+
+    def action_selected(self, event):
+        if not self.row_widgets:
+            return "break"
+            
+        item = self.row_widgets[self.selected_index]["data"]
+        key_combo = item["key"]
+        
+        # Copy to clipboard
+        try:
+            subprocess.run(["wl-copy", key_combo], check=True)
+        except Exception:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(key_combo)
+            
+        # Flash visual feedback
+        self.show_notification(f"Copied shortcut '{key_combo}' for '{item['action']}'")
+        self.root.destroy()
+        return "break"
+
+    def show_notification(self, message):
+        try:
+            # Try to send notification using notify-send
+            subprocess.run(["notify-send", "-a", "Niri Cheatsheet", message])
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    # Workaround for blurry fonts on some Wayland/Tkinter scaling
+    try:
+        from ctypes import windll
+        windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        pass
+        
+    root = tk.Tk()
+    app = NiriCheatsheetApp(root)
+    root.mainloop()
