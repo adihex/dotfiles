@@ -1,0 +1,79 @@
+#!/bin/sh
+# system-stats — one-shot dump of gaming-laptop sensors as key=value pairs.
+# Resolves hwmon devices by chip name (boot-stable). Called by quickshell every second.
+#
+# Output example:
+# cpu_temp=89 cpu_usage=12 gpu_temp=75 gpu_junction=80 gpu_mem=76 gpu_busy=34 gpu_power=60 \
+# cpu_fan=4169 gpu_fan=4149 fan_max=4818 ambient=57 nvme=41 mem_used=9.2 mem_total=15.3
+
+hwmon_by_name() {
+    for d in /sys/class/hwmon/hwmon*; do
+        [ "$(cat "$d/name" 2>/dev/null)" = "$1" ] && { echo "$d"; return; }
+    done
+}
+
+read_temp() { # millidegrees -> whole degrees
+    v=$(cat "$1" 2>/dev/null) || return
+    [ -n "$v" ] && echo $((v / 1000))
+}
+
+# ── CPU (k10temp Tctl) ──
+K10=$(hwmon_by_name k10temp)
+CPU_TEMP=$(read_temp "$K10/temp1_input")
+
+# ── dGPU: the amdgpu hwmon that has a junction sensor ──
+GPU_TEMP="" GPU_JUNC="" GPU_MEM="" GPU_POWER="" GPU_BUSY=""
+for d in /sys/class/hwmon/hwmon*; do
+    [ "$(cat "$d/name" 2>/dev/null)" = "amdgpu" ] || continue
+    if [ -f "$d/temp2_input" ]; then
+        GPU_TEMP=$(read_temp "$d/temp1_input")
+        GPU_JUNC=$(read_temp "$d/temp2_input")
+        GPU_MEM=$(read_temp "$d/temp3_input")
+        p=$(cat "$d/power1_average" 2>/dev/null)
+        [ -n "$p" ] && GPU_POWER=$((p / 1000000))
+        GPU_BUSY=$(cat "$d/device/gpu_busy_percent" 2>/dev/null)
+        break
+    fi
+done
+# fallback: any amdgpu edge temp
+if [ -z "$GPU_TEMP" ]; then
+    for d in /sys/class/hwmon/hwmon*; do
+        [ "$(cat "$d/name" 2>/dev/null)" = "amdgpu" ] || continue
+        GPU_TEMP=$(read_temp "$d/temp1_input")
+        GPU_BUSY=$(cat "$d/device/gpu_busy_percent" 2>/dev/null)
+        break
+    done
+fi
+
+# ── fans (dell_smm: fan1=CPU fan, fan3=GPU fan) ──
+SMM=$(hwmon_by_name dell_smm)
+[ -z "$SMM" ] && SMM=$(hwmon_by_name alienware_wmi)
+CPU_FAN=$(cat "$SMM/fan1_input" 2>/dev/null)
+GPU_FAN=$(cat "$SMM/fan3_input" 2>/dev/null)
+[ -z "$GPU_FAN" ] && GPU_FAN=$(cat "$SMM/fan2_input" 2>/dev/null)
+FAN_MAX=$(cat "$SMM/fan1_max" 2>/dev/null)
+
+# ── ambient + nvme ──
+AMBIENT=$(read_temp "$SMM/temp3_input")
+for d in /sys/class/hwmon/hwmon*; do
+    [ "$(cat "$d/name" 2>/dev/null)" = "nvme" ] || continue
+    NVME=$(read_temp "$d/temp1_input")
+    break
+done
+
+# ── CPU usage % (state file in /tmp) ──
+read _ u n s i _ < /proc/stat
+now=$((u + n + s)); idle=$i
+state=/tmp/.system-stats-cpu
+if [ -f "$state" ]; then
+    read pnow pidle < "$state"
+    dn=$((now - pnow)); di=$((idle - pidle))
+    [ $((dn + di)) -gt 0 ] && CPU_USAGE=$((100 * dn / (dn + di)))
+fi
+echo "$now $idle" > "$state"
+
+# ── memory (GiB) ──
+MEM_TOTAL=$(awk '/MemTotal/ {printf "%.1f", $2/1048576}' /proc/meminfo)
+MEM_USED=$(awk '/MemTotal/ {t=$2} /MemAvailable/ {a=$2} END {printf "%.1f", (t-a)/1048576}' /proc/meminfo)
+
+echo "cpu_temp=${CPU_TEMP:-0} cpu_usage=${CPU_USAGE:-0} gpu_temp=${GPU_TEMP:-0} gpu_junction=${GPU_JUNC:-0} gpu_mem=${GPU_MEM:-0} gpu_busy=${GPU_BUSY:-0} gpu_power=${GPU_POWER:-0} cpu_fan=${CPU_FAN:-0} gpu_fan=${GPU_FAN:-0} fan_max=${FAN_MAX:-0} ambient=${AMBIENT:-0} nvme=${NVME:-0} mem_used=${MEM_USED:-0} mem_total=${MEM_TOTAL:-0}"

@@ -182,6 +182,41 @@ ShellRoot {
         onTriggered: updateBluetooth()
     }
 
+    // ── system stats (live, polled every 1s via scripts/system-stats) ──
+    property var stats: ({ cpu_temp: 0, cpu_usage: 0, gpu_temp: 0, gpu_junction: 0, gpu_mem: 0, gpu_busy: 0, gpu_power: 0, cpu_fan: 0, gpu_fan: 0, fan_max: 0, ambient: 0, nvme: 0, mem_used: 0, mem_total: 0 })
+    property bool statsOpen: false
+
+    function tempColor(t) {
+        if (t >= 90) return root.red
+        if (t >= 75) return root.yellow
+        return root.green
+    }
+
+    Process {
+        id: statsPoll
+        command: [Quickshell.env("HOME") + "/dotfiles/scripts/system-stats"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let s = {}
+                let pairs = text.trim().split(" ")
+                for (let i = 0; i < pairs.length; i++) {
+                    let kv = pairs[i].split("=")
+                    if (kv.length === 2) s[kv[0]] = parseFloat(kv[1])
+                }
+                root.stats = s
+            }
+        }
+        onExited: statsTimer.start()
+    }
+
+    Timer {
+        id: statsTimer
+        interval: 1000
+        repeat: false
+        onTriggered: { if (!statsPoll.running) statsPoll.running = true }
+    }
+
     // ── bar ──
     Variants {
         model: Quickshell.screens
@@ -330,6 +365,60 @@ ShellRoot {
                                 } else if (mouse.button === Qt.RightButton) {
                                     Quickshell.execDetached(["blueman-manager"])
                                 }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        implicitWidth: 1; implicitHeight: root.barH * 0.5
+                        color: root.overlay1
+                    }
+
+                    // ── system stats (temps + fans, click for details) ──
+                    Item {
+                        implicitWidth: statsRow.width
+                        implicitHeight: root.barH
+                        Row {
+                            id: statsRow
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 6
+                            Text {
+                                text: String.fromCodePoint(0xF050F)
+                                color: root.tempColor(Math.max(root.stats.cpu_temp, root.stats.gpu_temp))
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 16 }
+                            }
+                            Text {
+                                text: root.stats.cpu_temp + "°"
+                                color: root.tempColor(root.stats.cpu_temp)
+                                font.pixelSize: 14
+                            }
+                            Text {
+                                text: root.stats.gpu_temp + "°"
+                                color: root.tempColor(root.stats.gpu_temp)
+                                font.pixelSize: 14
+                            }
+                            Text {
+                                text: String.fromCodePoint(0xF0210)
+                                color: root.teal
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 15 }
+                            }
+                            Text {
+                                text: {
+                                    let f = Math.max(root.stats.cpu_fan, root.stats.gpu_fan)
+                                    return f > 0 ? (f >= 1000 ? (f / 1000).toFixed(1) + "k" : f + "") : "off"
+                                }
+                                color: root.teal
+                                font.pixelSize: 14
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onClicked: (mouse) => {
+                                if (mouse.button === Qt.LeftButton)
+                                    root.statsOpen = !root.statsOpen
+                                else if (mouse.button === Qt.RightButton)
+                                    Quickshell.execDetached([Quickshell.env("HOME") + "/dotfiles/scripts/toggle-gpu-fan"])
                             }
                         }
                     }
@@ -531,5 +620,111 @@ ShellRoot {
             }
         }
     }
+
+    // ── system stats detail panel (toggled from bar) ──
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: statsPanel
+            required property ShellScreen modelData
+            screen: modelData
+            visible: root.statsOpen
+            anchors.top: true
+            anchors.right: true
+            margins.top: root.barH + 6
+            margins.right: 8
+            exclusiveZone: 0
+            implicitWidth: 320
+            implicitHeight: statsCol.implicitHeight + 24
+            color: "transparent"
+            WlrLayershell.namespace: "niri-stats"
+
+            component StatRow: RowLayout {
+                property string label: ""
+                property string value: ""
+                property color valueColor: root.text
+                property real ratio: 0
+                spacing: 8
+                Layout.fillWidth: true
+                Text {
+                    text: label
+                    color: root.subtext
+                    font.pixelSize: 13
+                    Layout.preferredWidth: 100
+                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 5
+                    radius: 3
+                    color: root.overlay1
+                    Rectangle {
+                        width: parent.width * Math.max(0, Math.min(1, ratio))
+                        height: parent.height
+                        radius: 3
+                        color: valueColor
+                    }
+                }
+                Text {
+                    text: value
+                    color: valueColor
+                    font { family: "JetBrainsMono Nerd Font"; pixelSize: 13 }
+                    horizontalAlignment: Text.AlignRight
+                    Layout.preferredWidth: 120
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                color: root.bg
+                radius: 10
+                border { color: root.overlay1; width: 1 }
+
+                ColumnLayout {
+                    id: statsCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                    spacing: 7
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Text {
+                            text: String.fromCodePoint(0xF050F) + "  System Stats"
+                            color: root.accent
+                            font { family: "JetBrainsMono Nerd Font"; bold: true; pixelSize: 14 }
+                        }
+                        Item { Layout.fillWidth: true }
+                        Rectangle { width: 7; height: 7; radius: 4; color: root.green }
+                        Text { text: "live"; color: root.green; font.pixelSize: 12 }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.overlay1 }
+
+                    StatRow { label: "CPU temp";     value: root.stats.cpu_temp + "°C";  valueColor: root.tempColor(root.stats.cpu_temp);     ratio: root.stats.cpu_temp / 100 }
+                    StatRow { label: "CPU usage";    value: root.stats.cpu_usage + "%"; valueColor: root.accent;                           ratio: root.stats.cpu_usage / 100 }
+                    StatRow { label: "GPU edge";     value: root.stats.gpu_temp + "°C";  valueColor: root.tempColor(root.stats.gpu_temp);     ratio: root.stats.gpu_temp / 100 }
+                    StatRow { label: "GPU junction"; value: root.stats.gpu_junction + "°C"; valueColor: root.tempColor(root.stats.gpu_junction); ratio: root.stats.gpu_junction / 110 }
+                    StatRow { label: "GPU memory";   value: root.stats.gpu_mem + "°C";   valueColor: root.tempColor(root.stats.gpu_mem);      ratio: root.stats.gpu_mem / 120 }
+                    StatRow { label: "GPU busy";     value: root.stats.gpu_busy + "%";  valueColor: root.lavender;                          ratio: root.stats.gpu_busy / 100 }
+                    StatRow { label: "GPU power";    value: root.stats.gpu_power + " W"; valueColor: root.yellow;                            ratio: root.stats.gpu_power / 80 }
+
+                    Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.overlay1 }
+
+                    StatRow { label: "CPU fan"; value: root.stats.cpu_fan + " RPM"; valueColor: root.teal; ratio: root.stats.fan_max > 0 ? root.stats.cpu_fan / root.stats.fan_max : 0 }
+                    StatRow { label: "GPU fan"; value: root.stats.gpu_fan + " RPM"; valueColor: root.teal; ratio: root.stats.fan_max > 0 ? root.stats.gpu_fan / root.stats.fan_max : 0 }
+
+                    Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.overlay1 }
+
+                    StatRow { label: "Ambient"; value: root.stats.ambient + "°C"; valueColor: root.subtext; ratio: root.stats.ambient / 60 }
+                    StatRow { label: "NVMe";    value: root.stats.nvme + "°C";    valueColor: root.tempColor(root.stats.nvme); ratio: root.stats.nvme / 90 }
+                    StatRow { label: "RAM";     value: root.stats.mem_used.toFixed(1) + " / " + root.stats.mem_total.toFixed(1) + " GiB"; valueColor: root.accent; ratio: root.stats.mem_total > 0 ? root.stats.mem_used / root.stats.mem_total : 0 }
+                }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: root.statsOpen = false
+            }
+        }
+    }
 }
-// We'll do this inline instead
