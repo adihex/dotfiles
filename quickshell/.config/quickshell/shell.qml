@@ -212,7 +212,7 @@ ShellRoot {
     }
 
     // ── System stats polling ──
-    property var stats: ({ cpu_temp: 0, cpu_usage: 0, gpu_temp: 0, gpu_junction: 0, gpu_mem: 0, gpu_busy: 0, gpu_power: 0, cpu_fan: 0, gpu_fan: 0, fan_max: 0, ambient: 0, nvme: 0, mem_used: 0, mem_total: 0 })
+    property var stats: ({ cpu_temp: 0, cpu_usage: 0, gpu_temp: 0, gpu_junction: 0, gpu_mem: 0, gpu_busy: 0, gpu_power: 0, cpu_fan: 0, gpu_fan: 0, fan_max: 0, fan_pct: 0, ambient: 0, nvme: 0, mem_used: 0, mem_total: 0 })
     property bool statsOpen: false
     property bool calendarOpen: false
 
@@ -476,10 +476,7 @@ ShellRoot {
                                 font { family: "JetBrainsMono Nerd Font"; pixelSize: 15 }
                             }
                             Text {
-                                text: {
-                                    let f = Math.max(root.stats.cpu_fan, root.stats.gpu_fan)
-                                    return f > 0 ? (f >= 1000 ? (f / 1000).toFixed(1) + "k" : f + "") : "off"
-                                }
+                                text: root.stats.fan_pct + "%"
                                 color: root.teal
                                 font { family: "JetBrainsMono Nerd Font"; pixelSize: 13 }
                             }
@@ -983,8 +980,7 @@ ShellRoot {
 
                     Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.overlay1 }
 
-                    StatRow { label: "CPU fan"; value: root.stats.cpu_fan + " RPM"; valueColor: root.teal; ratio: root.stats.fan_max > 0 ? root.stats.cpu_fan / root.stats.fan_max : 0 }
-                    StatRow { label: "GPU fan"; value: root.stats.gpu_fan + " RPM"; valueColor: root.teal; ratio: root.stats.fan_max > 0 ? root.stats.gpu_max : 0 }
+                    StatRow { label: "Fan duty"; value: root.stats.fan_pct + "%"; valueColor: root.teal; ratio: root.stats.fan_pct / 100 }
 
                     Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.overlay1 }
 
