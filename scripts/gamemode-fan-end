@@ -1,3 +1,4 @@
 #!/bin/sh
-# gamemode-fan-end — restore temperature curve after the game exits (gamemode [custom] end hook)
+# gamemode-fan-end — restore quiet daily settings after the game exits (gamemode [custom] end hook)
+powerprofilesctl set balanced >/dev/null 2>&1
 lact cli profile set Default >/dev/null 2>&1

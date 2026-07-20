@@ -1,4 +1,7 @@
 #!/bin/sh
-# gamemode-fan-start — spin fans to 100% before a game launches (gamemode [custom] start hook)
+# gamemode-fan-start — max cooling before a game launches (gamemode [custom] start hook)
+# 1. EC thermal profile -> performance (G-Mode: CPU+GPU fans at aggressive firmware tables)
+# 2. LACT Gaming profile -> dGPU fan static 100%, high performance level
+powerprofilesctl set performance >/dev/null 2>&1
 lact cli profile set Gaming >/dev/null 2>&1
 sleep 2  # give fans a moment to ramp before the game starts
