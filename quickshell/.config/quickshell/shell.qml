@@ -703,7 +703,6 @@ ShellRoot {
             screen: modelData
             visible: root.calendarOpen
             anchors.top: true
-            anchors.horizontalCenter: true
             margins.top: root.barH + 6
             exclusiveZone: 0
             implicitWidth: 340

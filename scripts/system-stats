@@ -32,6 +32,8 @@ for d in /sys/class/hwmon/hwmon*; do
         p=$(cat "$d/power1_average" 2>/dev/null)
         [ -n "$p" ] && GPU_POWER=$((p / 1000000))
         GPU_BUSY=$(cat "$d/device/gpu_busy_percent" 2>/dev/null)
+        pw=$(cat "$d/pwm1" 2>/dev/null)
+        [ -n "$pw" ] && FAN_PCT=$((pw * 100 / 255))
         break
     fi
 done
@@ -76,4 +78,4 @@ echo "$now $idle" > "$state"
 MEM_TOTAL=$(awk '/MemTotal/ {printf "%.1f", $2/1048576}' /proc/meminfo)
 MEM_USED=$(awk '/MemTotal/ {t=$2} /MemAvailable/ {a=$2} END {printf "%.1f", (t-a)/1048576}' /proc/meminfo)
 
-echo "cpu_temp=${CPU_TEMP:-0} cpu_usage=${CPU_USAGE:-0} gpu_temp=${GPU_TEMP:-0} gpu_junction=${GPU_JUNC:-0} gpu_mem=${GPU_MEM:-0} gpu_busy=${GPU_BUSY:-0} gpu_power=${GPU_POWER:-0} cpu_fan=${CPU_FAN:-0} gpu_fan=${GPU_FAN:-0} fan_max=${FAN_MAX:-0} ambient=${AMBIENT:-0} nvme=${NVME:-0} mem_used=${MEM_USED:-0} mem_total=${MEM_TOTAL:-0}"
+echo "cpu_temp=${CPU_TEMP:-0} cpu_usage=${CPU_USAGE:-0} gpu_temp=${GPU_TEMP:-0} gpu_junction=${GPU_JUNC:-0} gpu_mem=${GPU_MEM:-0} gpu_busy=${GPU_BUSY:-0} gpu_power=${GPU_POWER:-0} cpu_fan=${CPU_FAN:-0} gpu_fan=${GPU_FAN:-0} fan_max=${FAN_MAX:-0} fan_pct=${FAN_PCT:-0} ambient=${AMBIENT:-0} nvme=${NVME:-0} mem_used=${MEM_USED:-0} mem_total=${MEM_TOTAL:-0}"

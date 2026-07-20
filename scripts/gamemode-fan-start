@@ -1,0 +1,4 @@
+#!/bin/sh
+# gamemode-fan-start — spin fans to 100% before a game launches (gamemode [custom] start hook)
+lact cli profile set Gaming >/dev/null 2>&1
+sleep 2  # give fans a moment to ramp before the game starts

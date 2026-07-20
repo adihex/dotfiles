@@ -1,0 +1,3 @@
+#!/bin/sh
+# gamemode-fan-end — restore temperature curve after the game exits (gamemode [custom] end hook)
+lact cli profile set Default >/dev/null 2>&1
