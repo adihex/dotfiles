@@ -1,0 +1,24 @@
+#!/bin/sh
+# git-auto-sync <repo-path> <name> — commit & push a repo if anything changed.
+# Run by *.timer units (dotfiles-sync, secondbrain-sync) or manually.
+
+repo="$1"
+name="${2:-repo}"
+
+[ -d "$repo/.git" ] || { echo "not a git repo: $repo" >&2; exit 1; }
+cd "$repo" || exit 1
+
+git add -A
+if git diff --cached --quiet; then
+    exit 0  # nothing to do
+fi
+
+msg="auto-sync: $(date '+%Y-%m-%d %H:%M')"
+git commit -m "$msg" >/dev/null || exit 1
+
+if git push -q origin HEAD 2>"/tmp/git-auto-sync-$name.err"; then
+    notify-send -t 2000 "$name synced" "$msg" 2>/dev/null || true
+else
+    notify-send -u critical "$name sync failed" "$(tail -1 "/tmp/git-auto-sync-$name.err")" 2>/dev/null || true
+    exit 1
+fi
