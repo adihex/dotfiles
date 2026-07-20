@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Services.Pipewire
@@ -28,14 +29,43 @@ ShellRoot {
         print("Quickshell bar loaded — " + Quickshell.env("HOME") + "/dotfiles/wallpapers")
     }
 
-    // ── PipeWire volume (native, real-time) ──
+    // ── PipeWire volume ──
     PwObjectTracker {
         objects: [Pipewire.defaultAudioSink]
     }
 
-    // ── brightness ──
-    // scroll changes are instant (parsed from brightnessctl output)
-    // external changes polled every 2s
+    // ── Niri Workspaces & Window Title IPC ──
+    property int activeWs: 1
+    property string activeTitle: "Desktop"
+    property string activeAppId: ""
+
+    Process {
+        id: niriInfoPoll
+        command: [Quickshell.env("HOME") + "/dotfiles/scripts/niri-workspace-info"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let txt = text.trim()
+                if (!txt) return
+                let wsMatch = txt.match(/ws_idx=(\d+)/)
+                let titleMatch = txt.match(/title="([^"]*)"/)
+                let appMatch = txt.match(/app_id="([^"]*)"/)
+                if (wsMatch) root.activeWs = parseInt(wsMatch[1])
+                if (titleMatch) root.activeTitle = titleMatch[1] || "Desktop"
+                if (appMatch) root.activeAppId = appMatch[1] || ""
+            }
+        }
+        onExited: niriTimer.start()
+    }
+
+    Timer {
+        id: niriTimer
+        interval: 300
+        repeat: false
+        onTriggered: { if (!niriInfoPoll.running) niriInfoPoll.running = true }
+    }
+
+    // ── Brightness ──
     property string brtText: "—%"
     property real brightnessMax: 1
 
@@ -59,7 +89,6 @@ ShellRoot {
         }
     }
 
-    // poll for external changes (brightness keys)
     Process {
         id: brtPoll
         command: ["brightnessctl", "-m"]
@@ -80,7 +109,6 @@ ShellRoot {
         onTriggered: { if (!brtPoll.running) brtPoll.running = true }
     }
 
-    // scroll: set + read back in one shot (instant)
     property var brtQueue: []
     Process {
         id: brtSet
@@ -109,45 +137,46 @@ ShellRoot {
         }
     }
 
-    // ── power menu launcher ──
+    // ── Power menu launcher ──
     function showPowerMenu() {
         Quickshell.execDetached([Quickshell.env("HOME") + "/dotfiles/scripts/powermenu"])
     }
 
-    // ── network (XMLHttpRequest polls /tmp/niri_network) ──
-    property string netIcon: String.fromCodePoint(0xF05AA)
-    property string netStatus: "..."
+    // ── Network stats polling ──
+    property string netIcon: "󰤨"
+    property string netStatus: "Checking..."
+    property string netType: "wifi"
 
-    function updateNetwork() {
-        let xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///tmp/niri_network")
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
-                let line = xhr.responseText.trim().split("\n")[0]
-                if (line.indexOf("wifi:") === 0) {
-                    netIcon = String.fromCodePoint(0xF0928)
-                    netStatus = line.substring(5)
-                } else {
-                    netIcon = String.fromCodePoint(0xF05AA)
-                    netStatus = "Offline"
-                }
+    Process {
+        id: netPoll
+        command: [Quickshell.env("HOME") + "/dotfiles/scripts/network-stats"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let txt = text.trim()
+                let typeMatch = txt.match(/type=([^\s]+)/)
+                let nameMatch = txt.match(/name="([^"]*)"/)
+                let iconMatch = txt.match(/icon="([^"]*)"/)
+                if (typeMatch) root.netType = typeMatch[1]
+                if (nameMatch) root.netStatus = nameMatch[1]
+                if (iconMatch) root.netIcon = iconMatch[1]
             }
         }
-        xhr.send()
+        onExited: netTimer.start()
     }
 
     Timer {
-        interval: 3000
-        running: true
-        repeat: true
-        onTriggered: updateNetwork()
+        id: netTimer
+        interval: 2000
+        repeat: false
+        onTriggered: { if (!netPoll.running) netPoll.running = true }
     }
 
     function openNetwork() {
         Quickshell.execDetached(["nm-connection-editor"])
     }
 
-    // ── bluetooth ──
+    // ── Bluetooth status ──
     property int btConnectedCount: 0
     property string btConnectedName: ""
 
@@ -176,15 +205,16 @@ ShellRoot {
     }
 
     Timer {
-        interval: 3000
+        interval: 2000
         running: true
         repeat: true
         onTriggered: updateBluetooth()
     }
 
-    // ── system stats (live, polled every 1s via scripts/system-stats) ──
+    // ── System stats polling ──
     property var stats: ({ cpu_temp: 0, cpu_usage: 0, gpu_temp: 0, gpu_junction: 0, gpu_mem: 0, gpu_busy: 0, gpu_power: 0, cpu_fan: 0, gpu_fan: 0, fan_max: 0, ambient: 0, nvme: 0, mem_used: 0, mem_total: 0 })
     property bool statsOpen: false
+    property bool calendarOpen: false
 
     function tempColor(t) {
         if (t >= 90) return root.red
@@ -217,7 +247,10 @@ ShellRoot {
         onTriggered: { if (!statsPoll.running) statsPoll.running = true }
     }
 
-    // ── bar ──
+    // ── Calendar date state ──
+    property date calDate: new Date()
+
+    // ── Bar window ──
     Variants {
         model: Quickshell.screens
 
@@ -248,60 +281,100 @@ ShellRoot {
                         fill: parent
                         leftMargin: 10; rightMargin: 10
                     }
-                    spacing: 14
+                    spacing: 12
 
-                    // ── left ──
-                    Text {
-                        text: "\u2630 Niri"
-                        color: root.accent
-                        font { family: "JetBrainsMono Nerd Font"; bold: true; pixelSize: 16 }
+                    // ── LEFT: Workspace & Window Title Context ──
+                    Rectangle {
+                        implicitWidth: wsRow.width + 12
+                        implicitHeight: root.barH - 8
+                        color: root.surface
+                        radius: 6
+                        border { color: root.accent; width: 1 }
+
+                        Row {
+                            id: wsRow
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Text {
+                                text: "󰍹 " + root.activeWs
+                                color: root.accent
+                                font { family: "JetBrainsMono Nerd Font"; bold: true; pixelSize: 14 }
+                            }
+                        }
                     }
+
                     Rectangle {
                         implicitWidth: 1; implicitHeight: root.barH * 0.5
                         color: root.overlay1
                     }
+
+                    // Focused Window Title
                     Text {
-                        text: bar.modelData.name
-                        color: root.subtext; font.pixelSize: 15
+                        text: root.activeTitle ? (root.activeTitle.length > 35 ? root.activeTitle.substring(0, 35) + "…" : root.activeTitle) : "Desktop"
+                        color: root.text
+                        font { family: "JetBrainsMono Nerd Font"; pixelSize: 14 }
+                        elide: Text.ElideRight
+                        Layout.maximumWidth: 350
                     }
 
                     Item { Layout.fillWidth: true }
 
-                    // ── center ──
-                    Text {
-                        text: {
-                            let h = new Date().getHours()
-                            let e = h < 6  ? "\uD83C\uDF19"
-                                  : h < 12 ? "\u2615"
-                                  : h < 18 ? "\u2600"
-                                  : h < 22 ? "\uD83C\uDF07"
-                                  :          "\uD83C\uDF19"
-                            return e + "  " + bar.dateNow
+                    // ── CENTER: Date, Greeting & Calendar Trigger ──
+                    Item {
+                        implicitWidth: dateRow.width + 16
+                        implicitHeight: root.barH - 6
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: root.calendarOpen ? root.overlay1 : "transparent"
+                            radius: 6
                         }
-                        color: root.text; font.pixelSize: 15
+
+                        Row {
+                            id: dateRow
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Text {
+                                text: {
+                                    let h = new Date().getHours()
+                                    let e = h < 6  ? "🌙"
+                                          : h < 12 ? "☕"
+                                          : h < 18 ? "☀️"
+                                          : h < 22 ? "🌆"
+                                          :          "🌙"
+                                    return e + "  " + bar.dateNow
+                                }
+                                color: root.text
+                                font { family: "JetBrainsMono Nerd Font"; bold: true; pixelSize: 14 }
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: root.calendarOpen = !root.calendarOpen
+                        }
                     }
 
                     Item { Layout.fillWidth: true }
 
-                    // ── network ──
+                    // ── RIGHT: Network ──
                     Item {
                         implicitWidth: netRow.width
                         implicitHeight: root.barH
-                        visible: root.netStatus !== "..."
                         Row {
                             id: netRow
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 4
+                            spacing: 5
                             Text {
                                 text: root.netIcon
-                                color: root.netStatus === "Offline" ? root.subtext : root.green
+                                color: root.netType === "offline" ? root.subtext : root.green
                                 font { family: "JetBrainsMono Nerd Font"; pixelSize: 16 }
                             }
                             Text {
                                 text: root.netStatus
-                                color: root.netStatus === "Offline" ? root.subtext : root.green
-                                font.pixelSize: 13
-                                visible: root.netStatus !== "Offline"
+                                color: root.netType === "offline" ? root.subtext : root.green
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 13 }
                             }
                         }
                         MouseArea {
@@ -315,20 +388,20 @@ ShellRoot {
                         color: root.overlay1
                     }
 
-                    // ── bluetooth ──
+                    // ── Bluetooth ──
                     Item {
                         implicitWidth: btRow.width
                         implicitHeight: root.barH
                         Row {
                             id: btRow
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 4
+                            spacing: 5
                             Text {
                                 text: {
                                     let a = Bluetooth.defaultAdapter
-                                    if (!a || !a.enabled) return String.fromCodePoint(0xF0A0B)
-                                    if (root.btConnectedCount > 0) return String.fromCodePoint(0xF0A0E)
-                                    return String.fromCodePoint(0xF0A0D)
+                                    if (!a || !a.enabled) return "󰂲"  // NF Bluetooth Off
+                                    if (root.btConnectedCount > 0) return "󰂱" // NF Bluetooth Connected
+                                    return "󰂯" // NF Bluetooth On
                                 }
                                 color: {
                                     let a = Bluetooth.defaultAdapter
@@ -344,7 +417,7 @@ ShellRoot {
                                     if (root.btConnectedCount === 1 && root.btConnectedName)
                                         return root.btConnectedName
                                     if (root.btConnectedCount > 1)
-                                        return root.btConnectedCount + ""
+                                        return root.btConnectedCount + " devices"
                                     return "On"
                                 }
                                 color: {
@@ -352,7 +425,7 @@ ShellRoot {
                                     if (!a || !a.enabled) return root.subtext
                                     return root.accent
                                 }
-                                font.pixelSize: 13
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 13 }
                             }
                         }
                         MouseArea {
@@ -374,7 +447,7 @@ ShellRoot {
                         color: root.overlay1
                     }
 
-                    // ── system stats (temps + fans, click for details) ──
+                    // ── System Stats ──
                     Item {
                         implicitWidth: statsRow.width
                         implicitHeight: root.barH
@@ -383,22 +456,22 @@ ShellRoot {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 6
                             Text {
-                                text: String.fromCodePoint(0xF050F)
+                                text: "󰔏"
                                 color: root.tempColor(Math.max(root.stats.cpu_temp, root.stats.gpu_temp))
                                 font { family: "JetBrainsMono Nerd Font"; pixelSize: 16 }
                             }
                             Text {
                                 text: root.stats.cpu_temp + "°"
                                 color: root.tempColor(root.stats.cpu_temp)
-                                font.pixelSize: 14
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 13 }
                             }
                             Text {
                                 text: root.stats.gpu_temp + "°"
                                 color: root.tempColor(root.stats.gpu_temp)
-                                font.pixelSize: 14
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 13 }
                             }
                             Text {
-                                text: String.fromCodePoint(0xF0210)
+                                text: "󰈐"
                                 color: root.teal
                                 font { family: "JetBrainsMono Nerd Font"; pixelSize: 15 }
                             }
@@ -408,7 +481,7 @@ ShellRoot {
                                     return f > 0 ? (f >= 1000 ? (f / 1000).toFixed(1) + "k" : f + "") : "off"
                                 }
                                 color: root.teal
-                                font.pixelSize: 14
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 13 }
                             }
                         }
                         MouseArea {
@@ -428,7 +501,7 @@ ShellRoot {
                         color: root.overlay1
                     }
 
-                    // ── brightness ──
+                    // ── Brightness ──
                     Item {
                         implicitWidth: brtRow.width
                         implicitHeight: root.barH
@@ -437,14 +510,14 @@ ShellRoot {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 4
                             Text {
-                                text: String.fromCodePoint(0xF059C)
+                                text: "󰃠"
                                 color: root.yellow
                                 font { family: "JetBrainsMono Nerd Font"; pixelSize: 16 }
                             }
                             Text {
                                 text: root.brtText
                                 color: root.yellow
-                                font.pixelSize: 14
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 13 }
                             }
                         }
                         MouseArea {
@@ -461,7 +534,7 @@ ShellRoot {
                         color: root.overlay1
                     }
 
-                    // ── volume ──
+                    // ── Volume ──
                     Item {
                         implicitWidth: volRow.width
                         implicitHeight: root.barH
@@ -474,12 +547,11 @@ ShellRoot {
                                 font { family: "JetBrainsMono Nerd Font"; pixelSize: 16 }
                                 text: {
                                     let s = Pipewire.defaultAudioSink
-                                    if (!s || !s.ready || !s.audio) return String.fromCodePoint(0xF0582)
-                                    if (s.audio.muted || s.audio.volume <= 0)
-                                        return String.fromCodePoint(0xF0582)
-                                    if (s.audio.volume >= 0.66) return String.fromCodePoint(0xF057E)
-                                    if (s.audio.volume >= 0.33) return String.fromCodePoint(0xF0580)
-                                    return String.fromCodePoint(0xF057F)
+                                    if (!s || !s.ready || !s.audio) return "󰝟"
+                                    if (s.audio.muted || s.audio.volume <= 0) return "󰝟"
+                                    if (s.audio.volume >= 0.66) return "󰕾"
+                                    if (s.audio.volume >= 0.33) return "󰖀"
+                                    return "󰕿"
                                 }
                             }
                             Text {
@@ -488,7 +560,7 @@ ShellRoot {
                                     if (s && s.audio && s.audio.muted) return root.red
                                     return root.teal
                                 }
-                                font.pixelSize: 14
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 13 }
                                 text: {
                                     let s = Pipewire.defaultAudioSink
                                     if (!s || !s.ready || !s.audio) return "—%"
@@ -523,11 +595,11 @@ ShellRoot {
                         color: root.overlay1
                     }
 
-                    // ── clock ──
+                    // ── Clock ──
                     Text {
                         text: bar.clockNow
                         color: root.lavender
-                        font { family: "JetBrainsMono Nerd Font"; bold: true; pixelSize: 16 }
+                        font { family: "JetBrainsMono Nerd Font"; bold: true; pixelSize: 15 }
                     }
 
                     Rectangle {
@@ -535,7 +607,7 @@ ShellRoot {
                         color: root.overlay1
                     }
 
-                    // ── battery (UPower reports 0.0–1.0, multiply by 100) ──
+                    // ── Battery ──
                     Item {
                         id: batteryItem
                         implicitWidth: batRow.width
@@ -566,25 +638,25 @@ ShellRoot {
                                 }
                                 text: {
                                     let d = UPower.displayDevice
-                                    if (!d || !d.ready) return String.fromCodePoint(0xF0083)
-                                    if (d.state === UPowerDeviceState.FullyCharged) return String.fromCodePoint(0xF008F)
-                                    if (d.state === UPowerDeviceState.Charging) return String.fromCodePoint(0xF008F)
+                                    if (!d || !d.ready) return "󰁹"
+                                    if (d.state === UPowerDeviceState.FullyCharged) return "󰂄"
+                                    if (d.state === UPowerDeviceState.Charging) return "󰂄"
                                     let p = batteryItem.pct()
-                                    if (p < 10) return String.fromCodePoint(0xF0079)
-                                    if (p < 20) return String.fromCodePoint(0xF007B)
-                                    if (p < 30) return String.fromCodePoint(0xF007C)
-                                    if (p < 40) return String.fromCodePoint(0xF007D)
-                                    if (p < 50) return String.fromCodePoint(0xF007E)
-                                    if (p < 60) return String.fromCodePoint(0xF007F)
-                                    if (p < 70) return String.fromCodePoint(0xF0080)
-                                    if (p < 80) return String.fromCodePoint(0xF0081)
-                                    if (p < 90) return String.fromCodePoint(0xF0082)
-                                    return String.fromCodePoint(0xF0083)
+                                    if (p < 10) return "󰂎"
+                                    if (p < 20) return "󰁺"
+                                    if (p < 30) return "󰁻"
+                                    if (p < 40) return "󰁼"
+                                    if (p < 50) return "󰁽"
+                                    if (p < 60) return "󰁾"
+                                    if (p < 70) return "󰁿"
+                                    if (p < 80) return "󰂀"
+                                    if (p < 90) return "󰂁"
+                                    return "󰁹"
                                 }
                             }
                             Text {
                                 id: batPct
-                                font.pixelSize: 14
+                                font { family: "JetBrainsMono Nerd Font"; pixelSize: 13 }
                                 color: batIcon.color
                                 text: {
                                     let d = UPower.displayDevice
@@ -606,9 +678,9 @@ ShellRoot {
                         color: root.overlay1
                     }
 
-                    // ── power (rightmost) ──
+                    // ── Power Button ──
                     Text {
-                        text: String.fromCodePoint(0xF0425)
+                        text: "󰐥"
                         color: root.red
                         font { family: "JetBrainsMono Nerd Font"; bold: true; pixelSize: 18 }
                         MouseArea {
@@ -621,7 +693,209 @@ ShellRoot {
         }
     }
 
-    // ── system stats detail panel (toggled from bar) ──
+    // ── CALENDAR FLYOUT PANEL ──
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: calPanel
+            required property ShellScreen modelData
+            screen: modelData
+            visible: root.calendarOpen
+            anchors.top: true
+            anchors.horizontalCenter: true
+            margins.top: root.barH + 6
+            exclusiveZone: 0
+            implicitWidth: 340
+            implicitHeight: calCol.implicitHeight + 24
+            color: "transparent"
+            WlrLayershell.namespace: "niri-calendar"
+
+            Rectangle {
+                anchors.fill: parent
+                color: root.bg
+                radius: 12
+                border { color: root.overlay1; width: 1 }
+
+                ColumnLayout {
+                    id: calCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
+                    spacing: 10
+
+                    // Month & Year Header
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            text: Qt.formatDateTime(root.calDate, "MMMM yyyy")
+                            color: root.accent
+                            font { family: "JetBrainsMono Nerd Font"; bold: true; pixelSize: 16 }
+                        }
+                        Item { Layout.fillWidth: true }
+                        
+                        // Previous Month
+                        Rectangle {
+                            implicitWidth: 26; implicitHeight: 26; radius: 6
+                            color: root.surface
+                            Text { anchors.centerIn: parent; text: "‹"; color: root.text; font.pixelSize: 16 }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    let d = new Date(root.calDate)
+                                    d.setMonth(d.getMonth() - 1)
+                                    root.calDate = d
+                                }
+                            }
+                        }
+
+                        // Today Reset
+                        Rectangle {
+                            implicitWidth: 44; implicitHeight: 26; radius: 6
+                            color: root.surface
+                            Text { anchors.centerIn: parent; text: "Today"; color: root.teal; font.pixelSize: 12 }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: root.calDate = new Date()
+                            }
+                        }
+
+                        // Next Month
+                        Rectangle {
+                            implicitWidth: 26; implicitHeight: 26; radius: 6
+                            color: root.surface
+                            Text { anchors.centerIn: parent; text: "›"; color: root.text; font.pixelSize: 16 }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    let d = new Date(root.calDate)
+                                    d.setMonth(d.getMonth() + 1)
+                                    root.calDate = d
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.overlay1 }
+
+                    // Days of week header
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Repeater {
+                            model: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+                            Text {
+                                text: modelData
+                                color: root.subtext
+                                font { family: "JetBrainsMono Nerd Font"; bold: true; pixelSize: 13 }
+                                horizontalAlignment: Text.AlignHCenter
+                                Layout.fillWidth: true
+                            }
+                        }
+                    }
+
+                    // Month Calendar Grid (7x6 days)
+                    GridLayout {
+                        id: dayGrid
+                        columns: 7
+                        rowSpacing: 4; columnSpacing: 4
+                        Layout.fillWidth: true
+
+                        Repeater {
+                            model: 42 // 6 weeks * 7 days
+
+                            delegate: Rectangle {
+                                implicitWidth: 38; implicitHeight: 32
+                                radius: 6
+                                Layout.alignment: Qt.AlignHCenter
+
+                                property date dayDate: {
+                                    let y = root.calDate.getFullYear()
+                                    let m = root.calDate.getMonth()
+                                    let firstDay = new Date(y, m, 1).getDay()
+                                    // shift so Monday is 0, Sunday is 6
+                                    let offset = (firstDay + 6) % 7
+                                    return new Date(y, m, index - offset + 1)
+                                }
+
+                                property bool isCurrentMonth: dayDate.getMonth() === root.calDate.getMonth()
+                                property bool isToday: {
+                                    let now = new Date()
+                                    return dayDate.getDate() === now.getDate() &&
+                                           dayDate.getMonth() === now.getMonth() &&
+                                           dayDate.getFullYear() === now.getFullYear()
+                                }
+
+                                color: isToday ? root.accent : (isCurrentMonth ? root.surface : "transparent")
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: dayDate.getDate()
+                                    color: isToday ? root.bg : (isCurrentMonth ? root.text : root.overlay1)
+                                    font { family: "JetBrainsMono Nerd Font"; bold: isToday; pixelSize: 13 }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.overlay1 }
+
+                    // Google Calendar & Calendar App Action Buttons
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: 32
+                            radius: 6
+                            color: root.surface
+                            border { color: root.accent; width: 1 }
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 6
+                                Text { text: "󰃭"; color: root.accent; font { family: "JetBrainsMono Nerd Font"; pixelSize: 14 } }
+                                Text { text: "Google Calendar"; color: root.text; font.pixelSize: 12 }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    root.calendarOpen = false
+                                    Quickshell.execDetached(["xdg-open", "https://calendar.google.com"])
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: 32
+                            radius: 6
+                            color: root.surface
+                            border { color: root.overlay1; width: 1 }
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 6
+                                Text { text: "󰸉"; color: root.teal; font { family: "JetBrainsMono Nerd Font"; pixelSize: 14 } }
+                                Text { text: "Calendar App"; color: root.text; font.pixelSize: 12 }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    root.calendarOpen = false
+                                    Quickshell.execDetached(["sh", "-c", "gnome-calendar || korganizer || xdg-open https://calendar.google.com"])
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── SYSTEM STATS FLYOUT PANEL ──
     Variants {
         model: Quickshell.screens
 
@@ -689,7 +963,7 @@ ShellRoot {
                         Layout.fillWidth: true
                         spacing: 6
                         Text {
-                            text: String.fromCodePoint(0xF050F) + "  System Stats"
+                            text: "󰔏  System Stats"
                             color: root.accent
                             font { family: "JetBrainsMono Nerd Font"; bold: true; pixelSize: 14 }
                         }
@@ -711,7 +985,7 @@ ShellRoot {
                     Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.overlay1 }
 
                     StatRow { label: "CPU fan"; value: root.stats.cpu_fan + " RPM"; valueColor: root.teal; ratio: root.stats.fan_max > 0 ? root.stats.cpu_fan / root.stats.fan_max : 0 }
-                    StatRow { label: "GPU fan"; value: root.stats.gpu_fan + " RPM"; valueColor: root.teal; ratio: root.stats.fan_max > 0 ? root.stats.gpu_fan / root.stats.fan_max : 0 }
+                    StatRow { label: "GPU fan"; value: root.stats.gpu_fan + " RPM"; valueColor: root.teal; ratio: root.stats.fan_max > 0 ? root.stats.gpu_max : 0 }
 
                     Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.overlay1 }
 

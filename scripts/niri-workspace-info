@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+import json, subprocess
+
+try:
+    ws_out = subprocess.check_output(["niri", "msg", "-j", "workspaces"], timeout=1).decode()
+    workspaces = json.loads(ws_out)
+    active_ws = next((w for w in workspaces if w.get("is_focused") or w.get("is_active")), None)
+    ws_idx = active_ws["idx"] if active_ws else 1
+except Exception:
+    ws_idx = 1
+
+title = ""
+app_id = ""
+try:
+    win_out = subprocess.check_output(["niri", "msg", "-j", "focused-window"], timeout=1).decode()
+    if win_out.strip():
+        win = json.loads(win_out)
+        title = win.get("title") or ""
+        app_id = win.get("app_id") or ""
+except Exception:
+    pass
+
+print(f'ws_idx={ws_idx} title="{title}" app_id="{app_id}"')
