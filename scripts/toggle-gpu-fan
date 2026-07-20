@@ -1,10 +1,32 @@
 #!/bin/bash
 # Toggle GPU fan between auto and 100%
-# For RX 5600M (dGPU, card1)
+# For RX 5600M (dGPU) — resolves hwmon by name (boot-stable)
 
-PWM="/sys/class/drm/card1/device/hwmon/hwmon5/pwm1"
-PWM_ENABLE="/sys/class/drm/card1/device/hwmon/hwmon5/pwm1_enable"
-TEMP="/sys/class/drm/card1/device/hwmon/hwmon5/temp1_input"
+# dGPU = the amdgpu hwmon that exposes pwm1 + a junction sensor
+HWMON=""
+for d in /sys/class/hwmon/hwmon*; do
+    [ "$(cat "$d/name" 2>/dev/null)" = "amdgpu" ] || continue
+    if [ -f "$d/pwm1" ] && [ -f "$d/temp2_input" ]; then
+        HWMON="$d"
+        break
+    fi
+done
+# fallback: any amdgpu with pwm1
+if [ -z "$HWMON" ]; then
+    for d in /sys/class/hwmon/hwmon*; do
+        [ "$(cat "$d/name" 2>/dev/null)" = "amdgpu" ] || continue
+        [ -f "$d/pwm1" ] && { HWMON="$d"; break; }
+    done
+fi
+
+if [ -z "$HWMON" ]; then
+    notify-send -u critical "GPU Fan" "No amdgpu hwmon with pwm1 found" 2>/dev/null || true
+    exit 1
+fi
+
+PWM="$HWMON/pwm1"
+PWM_ENABLE="$HWMON/pwm1_enable"
+TEMP="$HWMON/temp1_input"
 
 # Wake GPU if suspended (run a quick command on dGPU)
 DRI_PRIME=1 true 2>/dev/null
@@ -15,11 +37,11 @@ current_pwm=$(cat "$PWM" 2>/dev/null)
 if [ "$current_mode" = "1" ] && [ "$current_pwm" = "255" ]; then
     # Currently at 100% manual — switch back to auto
     pkexec sh -c "echo 2 > $PWM_ENABLE"
-    temp=$(cat "$TEMP" 2>/dev/null | head -c2)
+    temp=$(($(cat "$TEMP" 2>/dev/null) / 1000))
     notify-send -t 2000 "GPU Fan: AUTO" "Temp: ${temp}°C" 2>/dev/null || true
 else
     # Set to 100% manual
     pkexec sh -c "echo 1 > $PWM_ENABLE && echo 255 > $PWM"
-    temp=$(cat "$TEMP" 2>/dev/null | head -c2)
+    temp=$(($(cat "$TEMP" 2>/dev/null) / 1000))
     notify-send -t 2000 "GPU Fan: 100%" "Temp: ${temp}°C" 2>/dev/null || true
 fi
