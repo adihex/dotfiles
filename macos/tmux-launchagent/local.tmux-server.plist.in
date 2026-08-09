@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.tmux-server</string>
+
+    <!-- Check first because tmux's `new-session -A` takes the attach path when
+         `main` exists, which fails without a TTY under launchd. The executable
+         is passed as $1 rather than interpolated into shell source. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>&quot;$1&quot; has-session -t main 2&gt;/dev/null || exec &quot;$1&quot; new-session -d -s main</string>
+        <string>local.tmux-server</string>
+        <string>@TMUX@</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Deliberately no KeepAlive. `tmux new-session -d` forks the server and
+         exits immediately, so KeepAlive would treat every success as a crash.
+         Re-running the idempotent command every five minutes recovers a dead
+         server without a restart loop. Requires `set -s exit-empty off`. -->
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <!-- launchd does not read shell startup files. The installer supplies mise's
+         shims and the directory containing its discovered tmux executable. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>@HOME@/.local/share/mise/shims:@TMUX_DIR@:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>@HOME@/Library/Logs/tmux-server.log</string>
+    <key>StandardErrorPath</key>
+    <string>@HOME@/Library/Logs/tmux-server.err.log</string>
+</dict>
+</plist>

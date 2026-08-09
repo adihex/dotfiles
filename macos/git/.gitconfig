@@ -1,0 +1,23 @@
+[alias]
+  a = add
+  cm = commit -m
+  s = status
+  p = pull
+  u = push
+  co = checkout
+  fp = fetch --prune --all
+  l = log --oneline --decorate --graph
+[push]
+  autoSetupRemote = true
+[filter "lfs"]
+  clean = git-lfs clean -- %f
+  smudge = git-lfs smudge -- %f
+  process = git-lfs filter-process
+  required = true
+[color]
+  branch = auto
+  diff = auto
+  interactive = auto
+  status = auto
+[init]
+  defaultBranch = main

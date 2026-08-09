@@ -1,0 +1,33 @@
+theme = "Catppuccin Frappe"
+
+background-opacity = 0.92
+background-opacity-cells = true
+background-blur = true
+unfocused-split-opacity = 0.85
+
+# window-save-state was 'always' — caused auto-launch at login
+# Changed to 'never' to stop the popup
+window-save-state = never
+
+font-family = ""
+font-family = "JetBrains Mono"
+font-family = "SF Mono"
+font-feature = "-calt, -liga"
+font-size = 13.5
+
+window-padding-x = 12
+window-padding-y = 8
+
+cursor-style = bar
+cursor-opacity = 0.85
+cursor-color = cell-foreground
+
+copy-on-select = clipboard
+selection-clear-on-copy = true
+mouse-hide-while-typing = true
+right-click-action = "paste"
+scrollback-limit = 200000
+
+keybind = ctrl+shift+l=text:\x0c
+keybind = cmd+d=new_split:right
+keybind = cmd+shift+d=new_split:down
