@@ -1,0 +1,24 @@
+# Peaksea 3.4 terminal palette, matched to ~/.wezterm.lua.
+background = #e0e0e0
+foreground = #000000
+cursor-color = #008000
+cursor-text = #f0f0f0
+selection-background = #a6caf0
+selection-foreground = #000000
+
+palette = 0=#000000
+palette = 1=#800000
+palette = 2=#489000
+palette = 3=#907000
+palette = 4=#2060a8
+palette = 5=#a030a0
+palette = 6=#007068
+palette = 7=#c0c0c0
+palette = 8=#686868
+palette = 9=#c03000
+palette = 10=#009030
+palette = 11=#d0d090
+palette = 12=#1050a0
+palette = 13=#6a5acd
+palette = 14=#a6caf0
+palette = 15=#f0f0f0
