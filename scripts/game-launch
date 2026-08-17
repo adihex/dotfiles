@@ -36,8 +36,10 @@ if [[ "$*" == *"steam://"* ]]; then
     is_steam=1
 fi
 
-# 3. Run the game (use gamemode if available)
-if command -v gamemoderun &>/dev/null; then
+# 3. Run the game (do not wrap the Steam client itself with gamemoderun to avoid LD_PRELOAD crashes in helper tools)
+if [ $is_steam -eq 1 ]; then
+    "$@" &
+elif command -v gamemoderun &>/dev/null; then
     gamemoderun "$@" &
 else
     "$@" &
