@@ -77,10 +77,5 @@ if [ $is_steam -eq 1 ]; then
         echo "Warning: Could not detect launched game process within 60 seconds."
     fi
 else
-    # For non-Steam games, wait on the direct PID of the command we launched
-    wait $game_pid || true
-fi
-
-# 5. Restart the LLM service automatically
-echo "Restarting local LLM service (swrm-llama.service)..."
-systemctl --user start swrm-llama.service || true
+# Note: swrm-llama.service is left stopped so it does not collide with gaming workloads on ROCm0.
+# You can start it anytime via: systemctl --user start swrm-llama.service
