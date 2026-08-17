@@ -1,5 +1,8 @@
 #!/bin/sh
 # gamemode-fan-start — max cooling before a game launches (gamemode [custom] start hook)
+# Stop the LLM service to free up discrete GPU VRAM and system memory
+systemctl --user stop swrm-llama.service || true
+
 # 1. EC thermal profile -> performance (G-Mode: CPU+GPU fans at aggressive firmware tables)
 # 2. LACT Gaming profile -> dGPU fan static 100%, high performance level
 powerprofilesctl set performance >/dev/null 2>&1
