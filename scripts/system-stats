@@ -32,8 +32,7 @@ for d in /sys/class/hwmon/hwmon*; do
         p=$(cat "$d/power1_average" 2>/dev/null)
         [ -n "$p" ] && GPU_POWER=$((p / 1000000))
         GPU_BUSY=$(cat "$d/device/gpu_busy_percent" 2>/dev/null)
-        pw=$(cat "$d/pwm1" 2>/dev/null)
-        [ -n "$pw" ] && FAN_PCT=$((pw * 100 / 255))
+        # Removed virtual pwm1 reading
         break
     fi
 done
@@ -54,6 +53,14 @@ CPU_FAN=$(cat "$SMM/fan1_input" 2>/dev/null)
 GPU_FAN=$(cat "$SMM/fan3_input" 2>/dev/null)
 [ -z "$GPU_FAN" ] && GPU_FAN=$(cat "$SMM/fan2_input" 2>/dev/null)
 FAN_MAX=$(cat "$SMM/fan1_max" 2>/dev/null)
+
+# Calculate physical fan duty cycle based on actual RPM and max RPM
+FAN_PCT=0
+if [ -n "${GPU_FAN:-}" ] && [ -n "${FAN_MAX:-}" ] && [ "$FAN_MAX" -gt 0 ]; then
+    FAN_PCT=$((GPU_FAN * 100 / FAN_MAX))
+    # Cap at 100% in case of slight overboost
+    [ "$FAN_PCT" -gt 100 ] && FAN_PCT=100
+fi
 
 # ── ambient + nvme ──
 AMBIENT=$(read_temp "$SMM/temp3_input")
