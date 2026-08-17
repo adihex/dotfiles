@@ -54,7 +54,7 @@ if [ $is_steam -eq 1 ]; then
     game_process=""
     while [ $timeout -gt 0 ]; do
         # Detect common game binaries
-        for p in cs2 wine64-preloader proton; do
+        for p in cs2 wine64 proton; do
             if pgrep -x "$p" >/dev/null; then
                 game_process="$p"
                 started=1
