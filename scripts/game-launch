@@ -1,0 +1,84 @@
+#!/bin/bash
+# Gaming launcher — sets RX 5600 XT env vars, manages LLM service, and launches with gamemode
+# Usage: game-launch <executable> [args...]
+# Example: game-launch wine /path/to/game.exe
+
+set -euo pipefail
+
+SCRIPT_DIR="/home/adihex/.config/gaming"
+if [ -f "$SCRIPT_DIR/env.sh" ]; then
+    source "$SCRIPT_DIR/env.sh"
+fi
+
+echo "=== Gaming Mode ==="
+echo "GPU: AMD RX 5600 XT (DRI_PRIME=1)"
+echo "GameMode: active"
+echo "MangoHud: ${MANGOHUD:-off}"
+echo "==================="
+echo ""
+
+if [ $# -eq 0 ]; then
+    echo "Usage: game-launch <executable> [args...]"
+    echo ""
+    echo "Examples:"
+    echo "  game-launch wine /path/to/game.exe"
+    echo "  game-launch steam steam://rungameid/730"
+    exit 1
+fi
+
+# 1. Stop the LLM service to free up discrete GPU VRAM and system memory
+echo "Stopping local LLM service (swrm-llama.service)..."
+systemctl --user stop swrm-llama.service || true
+
+# 2. Check if we are launching a Steam game via URL or steam command
+is_steam=0
+if [[ "$*" == *"steam://"* ]]; then
+    is_steam=1
+fi
+
+# 3. Run the game (use gamemode if available)
+if command -v gamemoderun &>/dev/null; then
+    gamemoderun "$@" &
+else
+    "$@" &
+fi
+game_pid=$!
+
+# 4. Handle process monitoring and waiting for exit
+if [ $is_steam -eq 1 ]; then
+    # For Steam games, the steam command returns immediately.
+    # We wait for the game window/process (e.g. cs2, wine64-preloader, etc.) to start and exit.
+    echo "Steam game detected. Waiting for game process to start..."
+    timeout=60
+    started=0
+    game_process=""
+    while [ $timeout -gt 0 ]; do
+        # Detect common game binaries
+        for p in cs2 wine64-preloader proton; do
+            if pgrep -x "$p" >/dev/null; then
+                game_process="$p"
+                started=1
+                break 2
+            fi
+        done
+        sleep 1
+        timeout=$((timeout - 1))
+    done
+    
+    if [ $started -eq 1 ]; then
+        echo "Detected game process: $game_process. Monitoring..."
+        while pgrep -x "$game_process" >/dev/null; do
+            sleep 2
+        done
+        echo "Game has closed."
+    else
+        echo "Warning: Could not detect launched game process within 60 seconds."
+    fi
+else
+    # For non-Steam games, wait on the direct PID of the command we launched
+    wait $game_pid || true
+fi
+
+# 5. Restart the LLM service automatically
+echo "Restarting local LLM service (swrm-llama.service)..."
+systemctl --user start swrm-llama.service || true
