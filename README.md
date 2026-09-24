@@ -53,6 +53,9 @@ The fonts used by the terminal profiles are JetBrains Mono and Symbols Nerd
 Font Mono. Apple Color Emoji, Apple Symbols, Menlo, and SF Mono are macOS system
 fallbacks.
 
+Ghostty automatically selects its Peaksea light or dark theme from the current
+macOS appearance. Unlike WezTerm, it has no per-window light/dark toggle.
+
 ### Stow packages
 
 Each package is independent. Before stowing, back up or remove any existing

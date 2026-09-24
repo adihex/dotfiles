@@ -1,8 +1,11 @@
-theme = "Catppuccin Frappe"
+# Peaksea follows macOS appearance automatically. Unlike WezTerm's custom
+# CMD+SHIFT+L callback, Ghostty does not support a per-window light/dark toggle.
+theme = "light:Peaksea Light,dark:Peaksea Dark"
+window-theme = system
 
-background-opacity = 0.92
-background-opacity-cells = true
-background-blur = true
+background-opacity = 1
+background-opacity-cells = false
+background-blur = false
 unfocused-split-opacity = 0.85
 
 # window-save-state was 'always' — caused auto-launch at login
@@ -20,7 +23,6 @@ window-padding-y = 8
 
 cursor-style = bar
 cursor-opacity = 0.85
-cursor-color = cell-foreground
 
 copy-on-select = clipboard
 selection-clear-on-copy = true
